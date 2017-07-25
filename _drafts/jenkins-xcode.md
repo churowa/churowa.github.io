@@ -81,5 +81,28 @@ Did you know you can specify **which** version of Xcode that Jenkins runs with `
 
 This allows me to chain a whole bunch of shell scripts together. This is needed, because each call to `sh` within the Jenkinsfile has its own context. So when I run `bundle install + upgrade` earlier on, I need those ruby gems to exist when I call my `xcodebuild` later. Otherwise (for example), I wouldn't be able to pipe the output to `xcpretty` and get a nicely formatted log.
 
+`XCPRETTY_JSON_FILE_OUTPUT=xcodebuild.json xcpretty -r junit -f 'xcpretty-json-formatter'`
+
+I'm piping the output of xcodebuild to xcpretty, which outputs everything into a json file with xcpretty-json-formatter. This means that all test/analyze issues found by Xcode will be in a nice, easy-to-consume list.
+
 ### Post results to Bitbucket PR
+
+Our Android colleagues have the ability to post to our Pull Requests with issues found during the build process, but I want to go a little further. I know that Bitbucket Server/Cloud allows you to use a REST API call to post comments to individual files/lines. That's what I want for our app.
+
+I want for warnings and linter issues to show up **inline** in the PR. In order to get that, I have to use the Bitbucket Server API.
+
+The idea is that for each entry in the `xcodebuild.json` file, I'll create a new comment on the Pull Request. 
+
+So I've added the following to the stage:
+
+{% highlight groovy %}
+def fileContents = readFile "xcodebuild.json"
+def buildLog = new JsonSlurperClassic().parseText(fileContents)
+Integer branchId = getBranchId()
+buildLog.compile_warnings.each {
+    postComment(projectKey, repo, branchId, it.line+'\n'+it.cursor)
+}
+{% endhighlight %}
+
+We have to use `JsonSlurperClassic` because the newer `JsonSlurper` isn't thread-safe. [Or something like that.](https://stackoverflow.com/questions/37864542/jenkins-pipeline-notserializableexception-groovy-json-internal-lazymap/38439681#38439681)
 
